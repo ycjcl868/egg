@@ -1,4 +1,4 @@
-'ues strict';
+'use strict';
 
 module.exports = {
   write: true,
@@ -25,9 +25,7 @@ module.exports = {
     '@types/accepts',
     '@types/koa',
     '@types/koa-router',
-  ],
-  semver: [
-    'koa-bodyparser@2',
+    '@types/urllib',
   ],
   test: 'scripts',
 };

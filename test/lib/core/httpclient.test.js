@@ -2,7 +2,7 @@
 
 const assert = require('assert');
 const mm = require('egg-mock');
-const createHttpclient = require('../../../lib/core/httpclient');
+const Httpclient = require('../../../lib/core/httpclient');
 const utils = require('../../utils');
 
 describe('test/lib/core/httpclient.test.js', () => {
@@ -10,7 +10,7 @@ describe('test/lib/core/httpclient.test.js', () => {
   let url;
 
   before(() => {
-    client = createHttpclient({
+    client = new Httpclient({
       config: {
         httpclient: {
           request: {},
@@ -25,8 +25,8 @@ describe('test/lib/core/httpclient.test.js', () => {
       info.args.headers['mock-rpcid'] = 'mock-rpcid';
     });
   });
-  before(function* () {
-    url = yield utils.startLocalServer();
+  before(async () => {
+    url = await utils.startLocalServer();
   });
 
   afterEach(mm.restore);
@@ -67,7 +67,7 @@ describe('test/lib/core/httpclient.test.js', () => {
     client.curl(url, args);
   });
 
-  it('should requestThunk ok with log', function* () {
+  it('should requestThunk ok with log', async () => {
     const args = {
       dataType: 'text',
     };
@@ -76,10 +76,10 @@ describe('test/lib/core/httpclient.test.js', () => {
       assert(info.req.options.headers['mock-rpcid'] === 'mock-rpcid');
     });
 
-    yield client.requestThunk(url, args);
+    await client.requestThunk(url, args);
   });
 
-  it('should request error with log', done => {
+  it.skip('should request error with log', done => {
     mm.http.requestError(/.*/i, null, 'mock res error');
 
     client.once('response', info => {
@@ -149,6 +149,247 @@ describe('test/lib/core/httpclient.test.js', () => {
           assert(err.name === 'ResponseTimeoutError');
           assert(err.message.includes('Response timeout for 100ms'));
         });
+    });
+  });
+
+  describe('overwrite httpclient', () => {
+    let app;
+    before(() => {
+      app = utils.app('apps/httpclient-overwrite');
+      return app.ready();
+    });
+    after(() => app.close());
+
+    it('should set request default global timeout to 100ms', () => {
+      return app.httpclient.curl(`${url}/timeout`)
+        .catch(err => {
+          assert(err);
+          assert(err.name === 'ResponseTimeoutError');
+          assert(err.message.includes('Response timeout for 100ms'));
+        });
+    });
+
+    it('should assert url', () => {
+      return app.httpclient.curl('unknown url')
+        .catch(err => {
+          assert(err);
+          assert(err.message.includes('url should start with http, but got unknown url'));
+        });
+    });
+  });
+
+  describe('httpclient tracer', () => {
+    const url = 'https://www.alibaba.com/';
+    let app;
+    before(() => {
+      app = utils.app('apps/httpclient-tracer');
+      return app.ready();
+    });
+
+    after(() => app.close());
+
+    it('should app request auto set tracer', async () => {
+      const httpclient = app.httpclient;
+
+      let reqTracer;
+      let resTracer;
+
+      httpclient.on('request', function(options) {
+        reqTracer = options.args.tracer;
+      });
+
+      httpclient.on('response', function(options) {
+        resTracer = options.req.args.tracer;
+      });
+
+      let res = await httpclient.request(url, {
+        method: 'GET',
+      });
+
+      assert(res.status === 200);
+      assert(reqTracer === resTracer);
+
+      assert(reqTracer.traceId);
+      assert(reqTracer.traceId === resTracer.traceId);
+
+      reqTracer = null;
+      resTracer = null;
+
+      res = await httpclient.request(url);
+
+      assert(res.status === 200);
+      assert(reqTracer === resTracer);
+
+      assert(reqTracer.traceId);
+      assert(reqTracer.traceId === resTracer.traceId);
+    });
+
+    it('should agent request auto set tracer', async () => {
+      const httpclient = app.agent.httpclient;
+
+      let reqTracer;
+      let resTracer;
+
+      httpclient.on('request', function(options) {
+        reqTracer = options.args.tracer;
+      });
+
+      httpclient.on('response', function(options) {
+        resTracer = options.req.args.tracer;
+      });
+
+      const res = await httpclient.request(url, {
+        method: 'GET',
+      });
+
+      assert(res.status === 200);
+      assert(reqTracer === resTracer);
+
+      assert(reqTracer.traceId);
+      assert(reqTracer.traceId === resTracer.traceId);
+    });
+
+    it('should app request with ctx and tracer', async () => {
+      const httpclient = app.httpclient;
+
+      let reqTracer;
+      let resTracer;
+
+      httpclient.on('request', function(options) {
+        reqTracer = options.args.tracer;
+      });
+
+      httpclient.on('response', function(options) {
+        resTracer = options.req.args.tracer;
+      });
+
+      let res = await httpclient.request(url, {
+        method: 'GET',
+      });
+
+      assert(res.status === 200);
+
+      assert(reqTracer.traceId);
+      assert(reqTracer.traceId === resTracer.traceId);
+
+      reqTracer = null;
+      resTracer = null;
+      res = await httpclient.request(url, {
+        method: 'GET',
+        ctx: {},
+        tracer: {
+          id: '1234',
+        },
+      });
+
+      assert(res.status === 200);
+      assert(reqTracer.id === resTracer.id);
+      assert(reqTracer.id === '1234');
+
+      reqTracer = null;
+      resTracer = null;
+      res = await httpclient.request(url, {
+        method: 'GET',
+        ctx: {
+          tracer: {
+            id: '5678',
+          },
+        },
+      });
+
+      assert(res.status === 200);
+      assert(reqTracer.id === resTracer.id);
+      assert(reqTracer.id === '5678');
+    });
+  });
+
+  describe('before app ready multi httpclient request tracer', () => {
+    let app;
+    before(() => {
+      app = utils.app('apps/httpclient-tracer');
+    });
+
+    after(() => app.close());
+
+    it('should app request before ready use same tracer', async () => {
+      const httpclient = app.httpclient;
+
+      let reqTracers = [];
+      let resTracers = [];
+
+      httpclient.on('request', function(options) {
+        reqTracers.push(options.args.tracer);
+      });
+
+      httpclient.on('response', function(options) {
+        resTracers.push(options.req.args.tracer);
+      });
+
+      let res = await httpclient.request(url, {
+        method: 'GET',
+        timeout: 20000,
+      });
+      assert(res.status === 200);
+
+      res = await httpclient.request('https://github.com', {
+        method: 'GET',
+        timeout: 20000,
+      });
+
+      assert(res.status === 200);
+
+      res = await httpclient.request('https://www.npmjs.com', {
+        method: 'GET',
+        timeout: 20000,
+      });
+      assert(res.status === 200);
+
+      assert(reqTracers.length === 3);
+      assert(resTracers.length === 3);
+
+      assert(reqTracers[0] === reqTracers[1]);
+      assert(reqTracers[1] === reqTracers[2]);
+
+      assert(resTracers[0] === reqTracers[2]);
+      assert(resTracers[1] === resTracers[0]);
+      assert(resTracers[2] === resTracers[1]);
+
+      assert(reqTracers[0].traceId);
+
+      reqTracers = [];
+      resTracers = [];
+
+      await app.ready();
+
+      res = await httpclient.request(url, {
+        method: 'GET',
+        timeout: 20000,
+      });
+      assert(res.status === 200);
+
+      res = await httpclient.request('https://github.com', {
+        method: 'GET',
+        timeout: 20000,
+      });
+      assert(res.status === 200);
+
+      res = await httpclient.request('https://www.npmjs.com', {
+        method: 'GET',
+        timeout: 20000,
+      });
+      assert(res.status === 200);
+
+      assert(reqTracers.length === 3);
+      assert(resTracers.length === 3);
+
+      assert(reqTracers[0] !== reqTracers[1]);
+      assert(reqTracers[1] !== reqTracers[2]);
+
+      assert(resTracers[0] !== reqTracers[2]);
+      assert(resTracers[1] !== resTracers[0]);
+      assert(resTracers[2] !== resTracers[1]);
+
+      assert(reqTracers[0].traceId);
     });
   });
 });

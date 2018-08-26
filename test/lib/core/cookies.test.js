@@ -21,7 +21,7 @@ describe('test/lib/core/cookies.test.js', () => {
       const ctx = app.mockContext();
       assert.throws(() => {
         ctx.cookies.set('foo', 'bar', { secure: true });
-      }, 'Cannot send secure cookie over unencrypted connection');
+      }, /Cannot send secure cookie over unencrypted connection/);
     });
 
     it('should set cookie twice and not set domain when ctx.hostname=localhost', () => {
@@ -37,7 +37,7 @@ describe('test/lib/core/cookies.test.js', () => {
 
     it('should log CookieLimitExceed error when cookie value too long', done => {
       const ctx = app.mockContext();
-      const value = new Buffer(4094).fill(49).toString();
+      const value = Buffer.alloc(4094).fill(49).toString();
       ctx.cookies.set('foo', value);
       setTimeout(() => {
         const logPath = path.join(utils.getFilepath('apps/secure-app'), 'logs/secure-app/common-error.log');
@@ -54,7 +54,7 @@ describe('test/lib/core/cookies.test.js', () => {
         ctx.cookies.set('foo', 'bar', {
           encrypt: true,
         });
-      }, '.keys required for encrypt/sign cookies');
+      }, /\.keys required for encrypt\/sign cookies/);
     });
 
     it('should throw TypeError when get encrypt on keys not exists', () => {
@@ -65,7 +65,7 @@ describe('test/lib/core/cookies.test.js', () => {
         ctx.cookies.get('foo', {
           encrypt: true,
         });
-      }, '.keys required for encrypt/sign cookies');
+      }, /\.keys required for encrypt\/sign cookies/);
     });
 
     it('should not set secure when request protocol is http', done => {

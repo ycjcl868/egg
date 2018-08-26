@@ -70,7 +70,7 @@ if (cluster.isMaster) {
 
 1. 关闭异常 Worker 进程所有的 TCP Server（将已有的连接快速断开，且不再接收新的连接），断开和 Master 的 IPC 通道，不再接受新的用户请求。
 2. Master 立刻 fork 一个新的 Worker 进程，保证在线的『工人』总数不变。
-3. 异常 Worker 等待一端时间，处理完已经接受的请求后退出。
+3. 异常 Worker 等待一段时间，处理完已经接受的请求后退出。
 
 ```bash
    +---------+                 +---------+
@@ -197,22 +197,10 @@ module.exports = app => {
 
 在这个模型下，Master 进程承担了进程管理的工作（类似 [pm2]），不运行任何业务代码，我们只需要运行起一个 Master 进程它就会帮我们搞定所有的 Worker、Agent 进程的初始化以及重启等工作了。
 
-Master 进程的稳定性是极高的，线上运行时我们只需要在后台运行通过 `egg.startCluster` 启动的 Master 进程就可以了，不再需要使用 [pm2] 等进程守护模块。
-
-```js
-// dispatch.js
-const egg = require('egg');
-
-const workers = Number(process.argv[2] || require('os').cpus().length);
-egg.startCluster({
-  workers,
-  baseDir: __dirname,
-});
-```
+Master 进程的稳定性是极高的，线上运行时我们只需要通过 [egg-scripts] 后台运行通过 `egg.startCluster` 启动的 Master 进程就可以了，不再需要使用 [pm2] 等进程守护模块。
 
 ```bash
-# 后台运行 Master 进程
-$ EGG_SERVER_ENV=prod nohup node dispatch.js&
+$ egg-scripts start --daemon
 ```
 
 #### Agent
@@ -300,7 +288,7 @@ module.exports = app => {
   // 注意，只有在 egg-ready 事件拿到之后才能发送消息
   app.messenger.once('egg-ready', () => {
     app.messenger.sendToAgent('agent-event', { foo: 'bar' });
-    app.messenger.sendToApp('app-egent', { foo: 'bar' });
+    app.messenger.sendToApp('app-event', { foo: 'bar' });
   });
 }
 ```
@@ -346,27 +334,25 @@ app.messenger.once(action, data => {
 
 ```js
 // app/service/source.js
-module.exports = app => {
-  let memoryCache = {};
+let memoryCache = {};
 
-  return class Source extends app.Service {
-    get(key) {
-      return memoryCache[key];
-    }
+class SourceService extends Service {
+  get(key) {
+    return memoryCache[key];
+  }
 
-    * checkUpdate() {
-      // check if remote data source has changed
-      const updated = yield mockCheck();
-      this.ctx.logger.info('check update response %s', updated);
-      return updated;
-    }
+  async checkUpdate() {
+    // check if remote data source has changed
+    const updated = await mockCheck();
+    this.ctx.logger.info('check update response %s', updated);
+    return updated;
+  }
 
-    * update() {
-      // update memory cache from remote
-      memoryCache = yield mockFetch();
-      this.ctx.logger.info('update memory cache from remote: %j', memoryCache);
-    }
-  };
+  async update() {
+    // update memory cache from remote
+    memoryCache = await mockFetch();
+    this.ctx.logger.info('update memory cache from remote: %j', memoryCache);
+  }
 }
 ```
 
@@ -379,8 +365,8 @@ exports.schedule = {
   type: 'all', // run in all workers
 };
 
-exports.task = function* (ctx) {
-  yield ctx.service.source.update();
+exports.task = async ctx => {
+  await ctx.service.source.update();
   ctx.app.lastUpdateBy = 'force';
 };
 ```
@@ -394,8 +380,8 @@ exports.schedule = {
   type: 'worker', // only run in one worker
 };
 
-exports.task = function* (ctx) {
-  const needRefresh = yield ctx.service.source.checkUpdate();
+exports.task = async ctx => {
+  const needRefresh = await ctx.service.source.checkUpdate();
   if (!needRefresh) return;
 
   // notify all workers to update memory cache from `file`
@@ -403,7 +389,7 @@ exports.task = function* (ctx) {
 };
 ```
 
-在启动自定义文件中监听 `pullRefresh` 事件，并更新数据，所有的 Worker 进程都能收到这个消息，并触发更新，此时我们的方案二也已经大功告成了。
+在启动自定义文件中监听 `refresh` 事件，并更新数据，所有的 Worker 进程都能收到这个消息，并触发更新，此时我们的方案二也已经大功告成了。
 
 ```js
 // app.js
@@ -412,10 +398,8 @@ module.exports = app => {
     app.logger.info('start update by %s', by);
     // create an anonymous context to access service
     const ctx = app.createAnonymousContext();
-    // a convenient way to execute with generator function
-    // can replaced by `co`
-    ctx.runInBackground(function* () {
-      yield ctx.service.source.update();
+    ctx.runInBackground(async () => {
+      await ctx.service.source.update();
       app.lastUpdateBy = by;
     });
   });
@@ -440,8 +424,9 @@ module.exports = agent => {
 
 ## 更复杂的场景
 
-上面的例子中，我们在 Agent 进程上运行了一个 subscriber，来接收和消息中间件的消息，如果 Worker 进程也需要监听一些消息怎么办？如何通过 Agent 进程建立连接再转发给 Worker 进程呢？这些问题可以在[多进程研发模式增强](../advanced/cluster-client.md)中找到答案。
+上面的例子中，我们在 Agent 进程上运行了一个 subscriber，来监听消息中间件的消息，如果 Worker 进程也需要监听一些消息怎么办？如何通过 Agent 进程建立连接再转发给 Worker 进程呢？这些问题可以在[多进程研发模式增强](../advanced/cluster-client.md)中找到答案。
 
 [pm2]: https://github.com/Unitech/pm2
 [egg-cluster]: https://github.com/eggjs/egg-cluster
+[egg-scripts]: https://github.com/eggjs/egg-scripts
 [graceful]: https://github.com/node-modules/graceful

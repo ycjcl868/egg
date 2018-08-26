@@ -7,7 +7,7 @@ title: 应用部署
 
 ## 构建
 
-Javascript 语言本身不需要编译的，构建过程主要是下载依赖。但如果使用 TypeScript 或者 Babel 支持 ES6 以上的特性，那就必须要这一步了。
+JavaScript 语言本身不需要编译的，构建过程主要是下载依赖。但如果使用 TypeScript 或者 Babel 支持 ES6 以上的特性，那就必须要这一步了。
 
 一般安装依赖会指定 `NODE_ENV=production` 或 `npm install --production` 只安装 dependencies 的依赖。因为 devDependencies 中的模块过大而且在生产环境不会使用，安装后也可能遇到未知问题。
 
@@ -26,53 +26,164 @@ $ tar -zcvf ../release.tgz .
 
 ## 部署
 
-服务器需要预装 Node.js，框架支持的 Node 版本为 `>= 6.0.0`。
+服务器需要预装 Node.js，框架支持的 Node 版本为 `>= 8.0.0`。
 
-框架使用 [egg-cluster] 来启动 [Master 进程](./cluster-and-ipc.md#master)，Master 有足够的稳定性，不再需要使用 [pm2] 等进程守护模块。[egg-cluster] 已集成到框架中，只需要调用 `egg.startCluster` 方法。
+框架内置了 [egg-cluster] 来启动 [Master 进程](./cluster-and-ipc.md#master)，Master 有足够的稳定性，不再需要使用 [pm2] 等进程守护模块。
 
-更多参数可参考 [egg-cluster](https://github.com/eggjs/egg-cluster#options)
+同时，框架也提供了 [egg-scripts] 来支持线上环境的运行和停止。
 
-### 创建启动文件
-
-在应用根目录创建一个启动文件，比如 `dispatch.js`
-
-```js
-// dispatch.js
-const egg = require('egg');
-
-egg.startCluster({
-  baseDir: __dirname,
-});
-```
-
-### 后台运行
-
-然后运行这个文件，将标准输出重定向到 `stdout.log`，错误输出重定向到 `stderr.log`，便于排查问题。
+首先，我们需要把 `egg-scripts` 模块作为 `dependencies` 引入：
 
 ```bash
-EGG_SERVER_ENV=prod nohup node dispatch.js > stdout.log 2> stderr.log &
+$ npm i egg-scripts --save
 ```
 
-注意：
+添加 `npm scripts` 到 `package.json`：
 
-- **生产环境使用的 `EGG_SERVER_ENV` 必须为 `prod`**，可查看[运行环境](../basics/env.md)获取更多内容。
-- 如果使用 Docker，可直接前台运行。
-- 默认情况框架会创建和 CPU 核数相当的 app worker 数，可以充分的利用 CPU 资源。
+```json
+{
+  "scripts": {
+    "start": "egg-scripts start --daemon",
+    "stop": "egg-scripts stop"
+  }
+}
+```
 
-### 自定义框架启动
+这样我们就可以通过 `npm start` 和 `npm stop` 命令启动或停止应用。
 
-如果应用使用了[自定义框架](../advanced/framework.md)，还需要指定额外的参数，比如框架为 `yadan`。
+> 注意：`egg-scripts` 对 Windows 系统的支持有限，参见 [#22](https://github.com/eggjs/egg-scripts/pull/22)。
+
+### 启动命令
+
+```bash
+$ egg-scripts start --port=7001 --daemon --title=egg-server-showcase
+```
+
+如上示例，支持以下参数：
+
+- `--port=7001` 端口号，默认会读取环境变量 `process.env.PORT`，如未传递将使用框架内置端口 `7001`。
+- `--daemon` 是否允许在后台模式，无需 `nohup`。若使用 Docker 建议直接前台运行。
+- `--env=prod` 框架运行环境，默认会读取环境变量 `process.env.EGG_SERVER_ENV`， 如未传递将使用框架内置环境 `prod`。
+- `--workers=2` 框架 worker 线程数，默认会创建和 CPU 核数相当的 app worker 数，可以充分的利用 CPU 资源。
+- `--title=egg-server-showcase` 用于方便 ps 进程时 grep 用，默认为 `egg-server-${appname}`。
+- `--framework=yadan` 如果应用使用了[自定义框架](../advanced/framework.md)，可以配置 `package.json` 的 `egg.framework` 或指定该参数。
+- `--ignore-stderr` 忽略启动期的报错。
+- 所有 [egg-cluster] 的 Options 都支持透传，如 `--https` 等。
+
+更多参数可查看 [egg-scripts] 和 [egg-cluster] 文档。
+
+#### 启动配置项
+
+你也可以在 `config.{env}.js` 中配置指定启动配置。
 
 ```js
-// dispatch.js
-const path = require('path');
-const egg = require('egg');
+// config/config.default.js
 
-egg.startCluster({
-  baseDir: __dirname,
-  customEgg: path.join(__dirname, 'node_modules/yadan'),
-});
+exports.cluster = {
+  listen: {
+    port: 7001,
+    hostname: '127.0.0.1',
+    // path: '/var/run/egg.sock',
+  }
+}
 ```
 
+`path`，`port`，`hostname` 均为 [server.listen](https://nodejs.org/api/http.html#http_server_listen_port_hostname_backlog_callback) 的参数，`egg-scripts` 和 `egg.startCluster` 方法传入的 port 优先级高于此配置。
+
+
+### 停止命令
+
+```bash
+$ egg-scripts stop [--title=egg-server]
+```
+
+该命令将杀死 master 进程，并通知 worker 和 agent 优雅退出。
+
+支持以下参数：
+- `--title=egg-server` 用于杀死指定的 egg 应用，未传递则会终止所有的 Egg 应用。
+
+你也可以直接通过 `ps -eo "pid,command" | grep -- "--title=egg-server"` 来找到 master 进程，并 `kill` 掉，无需 `kill -9`。
+
+## 监控
+
+我们还需要对服务进行性能监控，内存泄露分析，故障排除等。
+
+业界常用的有：
+- [Node.js 性能平台（alinode）](https://www.aliyun.com/product/nodejs)
+- [NSolid](https://nodesource.com/products/nsolid/)
+
+### Node.js 性能平台（alinode）
+
+[Node.js 性能平台](https://www.aliyun.com/product/nodejs) 是面向所有 Node.js 应用提供 `性能监控、安全提醒、故障排查、性能优化` 等服务的整体性解决方案，提供完善的工具链和服务，协助开发者快速发现和定位线上问题。
+
+#### 安装 Runtime
+
+AliNode Runtime 可以直接替换掉 Node.js Runtime，对应版本参见[文档](https://help.aliyun.com/knowledge_detail/60811.html)。
+
+全局安装方式参见[文档](https://help.aliyun.com/document_detail/60338.html)。
+
+有时候，同机会部署多个项目，期望多版本共存时，则可以把 Runtime 安装到当前项目：
+
+```bash
+$ npm i nodeinstall -g
+$ nodeinstall --install-alinode ^3
+```
+
+[nodeinstall] 会把对应版本的 `alinode` 安装到项目的 `node_modules` 目录下。
+
+> 注意：打包机的操作系统和线上系统需保持一致，否则对应的 Runtime 不一定能正常运行。
+
+#### 安装及配置
+
+我们提供了 [egg-alinode] 来快速接入，无需安装 `agenthub` 等额外的常驻服务。
+
+**安装依赖：**
+
+```bash
+$ npm i egg-alinode --save
+```
+
+**开启插件：**
+
+```js
+// config/plugin.js
+exports.alinode = {
+  enable: true,
+  package: 'egg-alinode',
+};
+```
+
+**配置：**
+
+```js
+// config/config.default.js
+exports.alinode = {
+  // 从 `Node.js 性能平台` 获取对应的接入参数
+  appid: '<YOUR_APPID>',
+  secret: '<YOUR_SECRET>',
+};
+```
+
+### 启动应用
+
+`npm scripts` 配置的 `start` 指令无需改变，通过 `egg-scripts` 即可。
+
+启动命令需使用 `npm start`，因为 `npm scripts` 执行时会把 `node_module/.bin` 目录加入 `PATH`，故会优先使用当前项目执行的 Node 版本。
+
+启动后会看到 master 日志包含以下内容：
+
+```bash
+$ [master] node version v8.9.4
+$ [master] alinode version v3.8.4
+```
+
+#### 访问控制台
+
+控制台地址：[https://node.console.aliyun.com](https://node.console.aliyun.com)
+
+
 [egg-cluster]: https://github.com/eggjs/egg-cluster
+[egg-scripts]: https://github.com/eggjs/egg-scripts
+[egg-alinode]: https://github.com/eggjs/egg-alinode
 [pm2]: https://github.com/Unitech/pm2
+[nodeinstall]: https://github.com/cnpm/nodeinstall

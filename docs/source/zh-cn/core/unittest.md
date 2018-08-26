@@ -39,9 +39,6 @@ API 升级，测试用例可以很好地检查代码是否向下兼容。
 
 > Mocha is a feature-rich JavaScript test framework running on Node.js and in the browser, making asynchronous testing simple and fun. Mocha tests run serially, allowing for flexible and accurate reporting, while mapping uncaught exceptions to the correct test cases.
 
-加上 [thunk-mocha](https://npmjs.com/thunk-mocha) 模块的帮助，
-扩展了 Mocha 的多种用例书写方式，例如 generator function，async await 等。
-
 ### AVA
 
 为什么没有选择最近比较火的 [AVA](https://github.com/avajs/ava)，它看起来会跑得很快。
@@ -64,7 +61,7 @@ API 升级，测试用例可以很好地检查代码是否向下兼容。
 同样，测试断言库也是[百花齐放的时代](https://www.npmjs.com/search?q=assert&page=1&ranking=popularity)，
 我们经历过 [assert](https://nodejs.org/api/assert.html)，到 [should](https://github.com/shouldjs/should.js) 和 [expect](https://github.com/Automattic/expect.js)，还是不断地在尝试更好的断言库。
 
-直到我们发现 [power-assert](https://github.com/power-assert-js/power-assert)，
+直到我们发现 [power-assert]，
 因为[『No API is the best API』](https://github.com/atian25/blog/issues/16)，
 最终我们重新回归原始的 assert 作为默认的断言库。
 
@@ -103,7 +100,7 @@ test
 ### 测试运行工具
 
 统一使用 [egg-bin 来运行测试脚本](./development.md#单元测试)，
-自动将内置的 Mocha、thunk-mocha、power-assert，istanbul 等模块组合引入到测试脚本中，
+自动将内置的 [Mocha]、[co-mocha]、[power-assert]，[nyc] 等模块组合引入到测试脚本中，
 让我们**聚焦精力在编写测试代码**上，而不是纠结选择那些测试周边工具和模块。
 
 只需要在 `package.json` 上配置好 `scripts.test` 即可。
@@ -170,6 +167,17 @@ describe('test/controller/home.test.js', () => {
 这样我们就拿到了一个 app 的引用，接下来所有测试用例都会基于这个 app 进行。
 更多关于创建 app 的信息请查看 [`mock.app(options)`](https://github.com/eggjs/egg-mock#options) 文档。
 
+每一个测试文件都需要这样创建一个 app 实例非常冗余，因此 egg-mock 提供了一个 bootstrap 文件，可以直接从它上面拿到我们所常用的实例：
+
+```js
+// test/controller/home.test.js
+const { app, mock, assert } = require('egg-mock/bootstrap');
+
+describe('test/controller/home.test.js', () => {
+  // test cases
+});
+```
+
 ### ctx
 
 我们除了 app，还需要一种方式便捷地拿到 ctx，方便我们进行 Extend、Service、Helper 等测试。
@@ -207,9 +215,11 @@ it('should mock ctx.user', () => {
 
 ```js
 // Bad
-const mock = require('egg-mock');
+const { app } = require('egg-mock/bootstrap');
+
 describe('bad test', () => {
-  const app = mock.app();
+  doSomethingBefore();
+
   it('should redirect', () => {
     return app.httpRequest()
       .get('/')
@@ -218,21 +228,18 @@ describe('bad test', () => {
 });
 ```
 
-Mocha 刚开始运行的时候会载入所有用例，这时 describe 方法就会被调用，
-那 `mock.app()` 就会启动。
+Mocha 刚开始运行的时候会载入所有用例，这时 describe 方法就会被调用，那 `doSomethingBefore` 就会启动。
 如果希望使用 only 的方式只执行某个用例那段代码还是会被执行，这是非预期的。
 
 正确的做法是将其放到 before 中，只有运行这个套件中某个用例才会执行。
 
 ```js
 // Good
-const mock = require('egg-mock');
+const { app } = require('egg-mock/bootstrap');
+
 describe('good test', () => {
-  let app;
-  before(() => {
-    app = mock.app();
-    return app.ready();
-  });
+  before(() => doSomethingBefore());
+
   it('should redirect', () => {
     return app.httpRequest()
       .get('/')
@@ -257,29 +264,32 @@ describe('egg test', () => {
 
 ## 异步测试
 
-egg-bin 会自动加载 thunk-mocha 插件测试异步调用，它支持多种写法，比如上面启动完成，`app.ready()` 返回一个 Promise。
+egg-bin 支持测试异步调用，它支持多种写法：
 
 ```js
+// 使用返回 Promise 的方式
+it('should redirect', () => {
+  return app.httpRequest()
+    .get('/')
+    .expect(302);
+});
+
 // 使用 callback 的方式
-before(done => {
-  const app = mm.app();
-  app.ready(done);
+it('should redirect', done => {
+  app.httpRequest()
+    .get('/')
+    .expect(302, done);
 });
 
-// 使用 Promise
-before(() => {
-  const app = mm.app();
-  return app.ready();
-});
-
-// 使用 generator
-before(function* () {
-  const app = mm.app();
-  yield app.ready();
+// 使用 async
+it('should redirect', async () => {
+  await app.httpRequest()
+    .get('/')
+    .expect(302);
 });
 ```
 
-使用哪种写法取决于不同应用场景，如果遇到多个异步可以使用 generator function，也可以拆分成多个 before。
+使用哪种写法取决于不同应用场景，如果遇到多个异步可以使用 async function，也可以拆分成多个测试用例。
 
 ## Controller 测试
 
@@ -293,30 +303,24 @@ Controller 在整个应用代码里面属于比较难测试的部分了，因为
 ```js
 // app/router.js
 module.exports = app => {
-  app.get('homepage', '/', 'home.index');
+  const { router, controller } = app;
+  router.get('homepage', '/', controller.home.index);
 };
 
 // app/controller/home.js
-exports.index = function* (ctx) {
-  ctx.body = 'hello world';
-};
+class HomeController extends Controller {
+  async index() {
+    this.ctx.body = 'hello world';
+  }
+}
 ```
 
 写一个完整的单元测试，它的测试代码 `test/controller/home.test.js` 如下：
 
 ```js
-const assert = require('assert');
-const mock = require('egg-mock');
+const { app, mock, assert } = require('egg-mock/bootstrap');
 
 describe('test/controller/home.test.js', () => {
-  let app;
-  before(() => {
-    // 创建当前应用的 app 实例
-    app = mock.app();
-    // 等待 app 启动成功，才能执行测试用例
-    return app.ready();
-  });
-
   describe('GET /', () => {
     it('should status 200 and get the body', () => {
       // 对 app 发起 `GET /` 请求
@@ -326,15 +330,15 @@ describe('test/controller/home.test.js', () => {
         .expect('hello world'); // 期望 body 是 hello world
     });
 
-    it('should send multi requests', function* () {
+    it('should send multi requests', async () => {
       // 使用 generator function 方式写测试用例，可以在一个用例中串行发起多次请求
-      yield app.httpRequest()
+      await app.httpRequest()
         .get('/')
         .expect(200) // 期望返回 status 200
         .expect('hello world'); // 期望 body 是 hello world
 
       // 再请求一次
-      const result = yield app.httpRequest()
+      const result = await app.httpRequest()
         .get('/')
         .expect(200)
         .expect('hello world');
@@ -351,9 +355,11 @@ describe('test/controller/home.test.js', () => {
 
 ```js
 // app/controller/home.js
-exports.post = function* (ctx) {
-  ctx.body = ctx.request.body;
-};
+class HomeController extends Controller {
+  async post() {
+    this.ctx.body = this.ctx.request.body;
+  }
+}
 
 // test/controller/home.test.js
 it('should status 200 and get the request body', () => {
@@ -403,35 +409,33 @@ Service 相对于 Controller 来说，测试起来会更加简单，
 我们只需要先创建一个 ctx，然后通过 `ctx.service.${serviceName}` 拿到 Service 实例，
 然后调用 Service 方法即可。
 
-例如给 `app/service/user.js`
+例如
 
 ```js
-module.exports = app => {
-  return class User extends app.Service {
-    * get(name) {
-      return yield userDatabase.get(name);
-    }
-  };
-};
+// app/service/user.js
+class UserService extends Service {
+  async get(name) {
+    return await userDatabase.get(name);
+  }
+}
 ```
 
 编写单元测试：
 
 ```js
 describe('get()', () => {
-  // 因为需要异步调用，所以使用 generator function
-  it('should get exists user', function* () {
+  it('should get exists user', async () => {
     // 创建 ctx
     const ctx = app.mockContext();
     // 通过 ctx 访问到 service.user
-    const user = yield ctx.service.user.get('fengmk2');
+    const user = await ctx.service.user.get('fengmk2');
     assert(user);
     assert(user.name === 'fengmk2');
   });
 
-  it('should get null when user not exists', function* () {
+  it('should get null when user not exists', async () => {
     const ctx = app.mockContext();
-    const user = yield ctx.service.user.get('fengmk1');
+    const user = await ctx.service.user.get('fengmk1');
     assert(!user);
   });
 });
@@ -597,7 +601,7 @@ describe('isSuccess()', () => {
 
 Helper 测试方式与 Service 类似，也是通过 ctx 来访问到 Helper，然后调用 Helper 方法测试。
 
-例如 `app/helper/format.js`
+例如 `app/extend/helper.js`
 
 ```js
 module.exports = {
@@ -663,7 +667,7 @@ egg-mock 除了上面介绍过的 `app.mockContext()` 和 `app.mockCsrf()` 方�
 所以通常我们都会在 `afterEach` 钩子里面还原掉所有 mock。
 
 ```js
-describe('some tes', () => {
+describe('some test', () => {
   // before hook
 
   afterEach(mock.restore);
@@ -671,6 +675,8 @@ describe('some tes', () => {
   // it tests
 });
 ```
+
+**引入 `egg-mock/bootstrap` 时，会自动在 `afterEach` 钩子中还原所有的 mock，不需要在测试文件中再次编写。**
 
 下面会详细解释一下 egg-mock 的常见使用场景。
 
@@ -710,7 +716,7 @@ Service 作为框架标准的内置对象，我们提供了便捷的 `app.mockSe
 
 ```js
 it('should mock fengmk1 exists', () => {
-  app.mockService('user', 'get', function* () {
+  app.mockService('user', 'get', () => {
     return {
       name: 'fengmk1',
     };
@@ -750,10 +756,12 @@ it('should mock service error', () => {
 例如在 `app/controller/home.js` 中发起了一个 curl 请求
 
 ```js
-exports.httpclient = function* (ctx) {
-  const res = ctx.curl('https://eggjs.org');
-  ctx.body = res.data.toString();
-};
+class HomeController extends Controller {
+  async httpclient () {
+    const res = await this.ctx.curl('https://eggjs.org');
+    this.ctx.body = res.data.toString();
+  }
+}
 ```
 
 需要 mock 它的返回值：
@@ -777,3 +785,8 @@ describe('GET /httpclient', () => {
 ## 示例代码
 
 完整示例代码可以在 [eggjs/exmaples/unittest](https://github.com/eggjs/examples/blob/master/unittest) 找到。
+
+[Mocha]: https://mochajs.org
+[co-mocha]: https://github.com/blakeembrey/co-mocha
+[nyc]: https://github.com/istanbuljs/nyc
+[power-assert]: https://github.com/power-assert-js/power-assert

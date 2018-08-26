@@ -32,7 +32,7 @@ module.exports = appInfo => {
     /**
      * The key that signing cookies. It can contain multiple keys seperated by `,`.
      * @member {String} Config#keys
-     * @see https://eggjs.org/zh-cn/basics/controller.html#cookie-秘钥
+     * @see http://eggjs.org/en/core/cookie-and-session.html#cookie-secret-key
      * @default
      * @since 1.0.0
      */
@@ -72,7 +72,7 @@ module.exports = appInfo => {
      * @default
      * @since 1.0.0
      */
-    hostHeaders: 'x-forwarded-host',
+    hostHeaders: '',
 
     /**
      * package.json
@@ -226,12 +226,14 @@ module.exports = appInfo => {
     agentLogName: 'egg-agent.log',
     errorLogName: 'common-error.log',
     coreLogger: {},
+    allowDebugAtProd: false,
   };
 
   /**
    * The option for httpclient
    * @member Config#httpclient
    * @property {Boolean} enableDNSCache - Enable DNS lookup from local cache or not, default is false.
+   * @property {Boolean} dnsCacheLookupInterval - minimum interval of DNS query on the same hostname (default 10s).
    *
    * @property {Number} request.timeout - httpclient request default timeout, default is 5000 ms.
    *
@@ -247,8 +249,8 @@ module.exports = appInfo => {
    */
   config.httpclient = {
     enableDNSCache: false,
+    dnsCacheLookupInterval: 10000,
     dnsCacheMaxLength: 1000,
-    dnsCacheMaxAge: 10000,
 
     request: {
       timeout: 5000,
@@ -268,6 +270,18 @@ module.exports = appInfo => {
   };
 
   /**
+   * The option of `meta` middleware
+   *
+   * @member Config#meta
+   * @property {Boolean} enable - enable meta or not, default is true
+   * @property {Boolean} logging - enable logging start request, default is false
+   */
+  config.meta = {
+    enable: true,
+    logging: false,
+  };
+
+  /**
    * core enable middlewares
    * @member {Array} Config#middleware
    */
@@ -284,6 +298,56 @@ module.exports = appInfo => {
    * @member {Number} Config.workerStartTimeout
    */
   config.workerStartTimeout = 10 * 60 * 1000;
+
+  /**
+   *
+   * @member {Object} Config#cluster
+   * @property {Object} listen - listen options, see {@link https://nodejs.org/api/http.html#http_server_listen_port_hostname_backlog_callback}
+   * @property {String} listen.path - set a unix sock path when server listen
+   * @property {Number} listen.port - set a port when server listen
+   * @property {String} listen.hostname - set a hostname binding server when server listen
+   */
+  config.cluster = {
+    listen: {
+      path: '',
+      port: 7001,
+      hostname: '',
+    },
+  };
+
+  /**
+   * @property {Number} responseTimeout - response timeout, default is 60000
+   */
+  config.clusterClient = {
+    maxWaitTime: 60000,
+    responseTimeout: 60000,
+  };
+
+  /**
+   * This function / async function will be called when a client error occurred and return the response.
+   *
+   * The arguments are `err`, `socket` and `application` which indicate current client error object, current socket
+   * object and the application object.
+   *
+   * The response to be returned should include properties below:
+   *
+   * @member {Function} Config#onClientError
+   * @property [body] {String|Buffer} - the response body
+   * @property [status] {Number} - the response status code
+   * @property [headers] {Object} - the response header key-value pairs
+   *
+   * @example
+   * exports.onClientError = async (err, socket, app) => {
+   *   return {
+   *     body: 'error',
+   *     status: 400,
+   *     headers: {
+   *       'powered-by': 'Egg.js',
+   *     }
+   *   };
+   * }
+   */
+  config.onClientError = null;
 
   return config;
 };

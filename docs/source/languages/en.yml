@@ -17,13 +17,15 @@ index:
   readmore: "Read More"
 
 header:
-  translations: "Translations"
+  translations: "切换语言"
 
 guide_toc:
   Intro: Guide
   What is Egg: What is Egg?
   Egg and Koa: Egg and Koa
   Get Start: Quick Start
+  Style Guide: Style Guide
+  Migration: Migration to 2.x
   Basics: Basis Function
   Structure: Directory Structure
   Objects: Built-in Objects
@@ -33,6 +35,7 @@ guide_toc:
   Router: Router
   Controller: Controller
   Service: Service
+  Plugin: Plugin
   Schedule: Schedule
   Extend: Extend
   Custom init: Custom Init
@@ -42,7 +45,7 @@ guide_toc:
   Security: Security
   View: View
   View Plugin: View Plugin
-  # Passport:
+  Passport: Passport
   HttpClient: HttpClient
   Logger:  Logger
   Error Handling: Error Handling
@@ -52,11 +55,16 @@ guide_toc:
   Tutorials: Tutorials
   Advanced: Advanced
   Cluster Client: Cluster Enhancement
+  Plugin Development: Plugin Development
   Framework: Framework
-  Plugin: Plugin
   Progressive:  Progressive
+  Deployment: Deployment
   # Loader:
   Community: Community
+  Plugin List: Plugin List
   Contributing: Contributing
   Member Guide: Member Guide
   FAQ: FAQ
+  Resource: Resource
+  Assets: Assets
+  TypeScript: TypeScript

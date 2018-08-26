@@ -3,11 +3,35 @@ title: FAQ
 
 If you have questions that is not contained below, please check [Egg issues](https://github.com/eggjs/egg/issues).
 
-## Why my config don't work ?
+## How to feedback efficiently?
+
+Thank you for reporting an issue.
+
+1. It's RECOMMENDED to submit PR for typo or tiny bug fix.
+2. If this's a FEATURE request, please provide: details, pseudo codes if necessary.
+3. If this's a BUG, please provide: course repetition, error log and configuration. Fill in as much of the template below as you're able.
+4. **It will be nice to use `egg-init --type=simple bug` to provide a mini GitHub repository which can reproduce the issue.**
+
+Most importantly, please understand one thing: the relationship between the `user` and `the maintainer of open source project` is not `Buyer` and `Seller`, the issue is not a customer order either.
+When you're opening an issue, please hold a mentality of "working together to solve this problem." Do not expect us to serve you unilaterally.
+
+## Why my config don't work?
 
 Framework [Config](./basics/config.md) settings is powerfull, support different environments and different places(framework, plugins, app).
 
 When you got some trouble, and want to find out what is the final config using at runtime, you can checkout `${root}/run/application_config.json`(workers' configurations) and `${root}/run/agent_config.json`(agent's configurations).(`root` is application's root directory, in `local` and `unittest` environments, it will be project base directory, in other environments will be HOME directory)
+
+Please make sure you don't make mistake like the code below:
+
+```js
+// config/config.default.js
+exports.someKeys = 'abc';
+module.exports = appInfo => {
+  const config = {};
+  config.keys = '123456';
+  return config;
+};
+```
 
 ## Where are my log files in prod environment?
 

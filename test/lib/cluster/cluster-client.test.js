@@ -7,13 +7,13 @@ const utils = require('../../utils');
 
 describe('test/lib/cluster/cluster-client.test.js', () => {
   let app;
-  before(function* () {
+  before(async () => {
     mm.consoleLevel('NONE');
     app = utils.app('apps/cluster_mod_app');
-    yield app.ready();
+    await app.ready();
   });
-  after(function* () {
-    yield app.close();
+  after(async () => {
+    await app.close();
     const agentInnerClient = app.agent.registryClient[innerClient];
     assert(agentInnerClient._realClient.closed === true);
     mm.restore();
@@ -35,6 +35,24 @@ describe('test/lib/cluster/cluster-client.test.js', () => {
           .get('/getHosts')
           .expect('30.20.78.299:20880')
           .expect(200);
+      });
+  });
+
+  it('should get default cluster response timeout', () => {
+    return app.httpRequest()
+      .get('/getDefaultTimeout')
+      .expect(200)
+      .then(res => {
+        assert(res.text === '60000');
+      });
+  });
+
+  it('should get overwrite cluster response timeout', () => {
+    return app.httpRequest()
+      .get('/getOverwriteTimeout')
+      .expect(200)
+      .then(res => {
+        assert(res.text === '1000');
       });
   });
 });

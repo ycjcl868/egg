@@ -18,7 +18,6 @@ title: Config 配置
 ```
 config
 |- config.default.js
-|- config.test.js
 |- config.prod.js
 |- config.unittest.js
 `- config.local.js
@@ -76,6 +75,19 @@ root | 应用根目录，只有在 local 和 unittest 环境下为 baseDir，其
 
 `appInfo.root` 是一个优雅的适配，比如在服务器环境我们会使用 `/home/admin/logs` 作为日志目录，而本地开发时又不想污染用户目录，这样的适配就很好解决这个问题。
 
+
+请根据具体场合选择合适的写法，但请确保没有写出以下代码：
+
+```js
+// config/config.default.js
+exports.someKeys = 'abc';
+module.exports = appInfo => {
+  const config = {};
+  config.keys = '123456';
+  return config;
+};
+```
+
 ### 配置加载顺序
 
 应用、插件、框架都可以定义这些配置，而且目录结构都是一致的，但存在优先级（应用 > 框架 > 插件），相对于此运行环境的优先级会更高。
@@ -109,73 +121,6 @@ extend(true, a, b);
 ```
 
 根据上面的例子，框架直接覆盖数组而不是进行合并。
-
-## 插件配置
-
-在应用中可以通过 `config/plugin.js` 来控制插件的一些选项。
-
-### 开启关闭
-
-框架有一些内置的插件，通过配置可以开启或关闭插件。插件关闭后，插件内所有的文件都不会被加载。
-
-```js
-// 关闭内置的 i18n 插件
-module.exports = {
-  i18n: {
-    enable: false,
-  },
-};
-```
-
-或可以简单的配置一个布尔值
-
-```js
-module.exports = {
-  i18n: false,
-};
-```
-
-### 引入插件
-
-框架默认内置了企业级应用常用的[一部分插件](https://github.com/eggjs/egg/blob/master/config/plugin.js)。
-
-而应用开发者可以根据业务需求，引入其他插件，只需要指定 `package` 配置。
-
-```js
-// 使用 mysql 插件
-module.exports = {
-  mysql: {
-    enable: true,
-    package: 'egg-mysql',
-  },
-};
-```
-
-`package` 为一个 npm 模块，必须添加依赖到 `pkg.dependencies` 中。框架会在 node_modules 目录中找到这个模块作为插件入口。
-
-```json
-{
-  "dependencies": {
-    "egg-mysql": "^1.0.0"
-  }
-}
-```
-
-**注意：配置的插件即使只在开发期使用，也必须是 dependencies 而不是 devDependencies，否则 `npm i --production` 后会找不到。**
-
-也可以指定 path 来替代 package。
-
-```js
-const path = require('path');
-module.exports = {
-  mysql: {
-    enable: true,
-    path: path.join(__dirname, '../app/plugin/egg-mysql'),
-  },
-};
-```
-
-path 为一个绝对路径，这样应用可以把自己写的插件直接放到应用目录中，如 `app/plugin` 目录。
 
 ## 配置结果
 

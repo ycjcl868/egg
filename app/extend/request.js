@@ -95,8 +95,9 @@ module.exports = {
   },
 
   /**
-   * Request remote IPv4 address
+   * Get or set the request remote IPv4 address
    * @member {String} Request#ip
+   * @param {String} ip - IPv4 address
    * @example
    * ```js
    * this.request.ip
@@ -115,10 +116,6 @@ module.exports = {
     return this._ip;
   },
 
-  /**
-   * Set the remote address
-   * @param {String} ip - IPv4 address
-   */
   set ip(ip) {
     this._ip = ip;
   },
@@ -155,7 +152,7 @@ module.exports = {
     if (!cacheQuery) {
       cacheQuery = c[str] = {};
       const isQueries = cacheName === _queriesCache;
-      // querystring.parse 不会解析 a[foo]=1&a[bar]=2 的情况
+      // `querystring.parse` CANNOT parse something like `a[foo]=1&a[bar]=2`
       const query = querystring.parse(str);
       for (const key in query) {
         if (!key) {
@@ -165,7 +162,7 @@ module.exports = {
         const value = filter(query[key]);
         cacheQuery[key] = value;
         if (isQueries && RE_ARRAY_KEY.test(key)) {
-          // 支持兼容 this.queries['key'] => this.queries['key[]']
+          // `this.queries['key'] => this.queries['key[]']` is compatibly supported
           const subkey = key.substring(0, key.length - 2);
 
           if (!cacheQuery[subkey]) {
@@ -178,13 +175,13 @@ module.exports = {
   },
 
   /**
-   * get params pass by querystring, all value are String type.
+   * get params pass by querystring, all values are of string type.
    * @member {Object} Request#query
    * @example
    * ```js
    * GET http://127.0.0.1:7001?name=Foo&age=20&age=21
    * this.query
-   * => { 'name': 'Foo', 'age': 20 }
+   * => { 'name': 'Foo', 'age': '20' }
    *
    * GET http://127.0.0.1:7001?a=b&a=c&o[foo]=bar&b[]=1&b[]=2&e=val
    * this.query

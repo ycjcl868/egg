@@ -163,6 +163,18 @@ exports.logger = {
 };
 ```
 
+#### 生产环境打印 debug 日志
+
+为了避免一些插件的调试日志在生产环境打印导致性能问题，生产环境默认禁止打印 DEBUG 级别的日志，如果确实有需求在生产环境打印 DEBUG 日志进行调试，需要打开 `allowDebugAtProd` 配置项。
+
+```js
+// config/config.prod.js
+exports.logger = {
+  level: 'DEBUG',
+  allowDebugAtProd: true,
+};
+```
+
 ### 终端日志级别
 
 默认只会输出 `INFO` 及以上（`WARN` 和 `ERROR`）的日志到终端中。
@@ -227,7 +239,6 @@ Transport 是一种传输通道，一个 logger 可包含多个传输通道。�
 首先我们定义一个日志的 transport，代表第三方日志服务。
 
 ```js
-const co = require('co');
 const util = require('util');
 const Transport = require('egg-logger').Transport;
 
@@ -242,12 +253,10 @@ class RemoteErrorTransport extends Transport {
     } else {
       log = util.format(...args);
     }
-    const that = this;
-    co(function* () {
-      yield that.options.app.curl('http://url/to/remote/error/log/service/logs', {
-        data: log,
-        method: 'POST',
-      });
+
+    this.options.app.curl('http://url/to/remote/error/log/service/logs', {
+      data: log,
+      method: 'POST',
     }).catch(console.error);
   }
 }
@@ -284,7 +293,7 @@ module.exports = appInfo => {
       filesRotateBySize: [
         path.join(appInfo.root, 'logs', appInfo.name, 'egg-web.log'),
       ],
-      maxFileSize: 2 * 1024 * 1024,
+      maxFileSize: 2 * 1024 * 1024 * 1024,
     },
   };
 };
@@ -320,7 +329,5 @@ module.exports = appInfo => {
 通常 Web 访问是高频访问，每次打印日志都写磁盘会造成频繁磁盘 IO，为了提高性能，我们采用的文件日志写入策略是：
 
 > 日志同步写入内存，异步每隔一段时间(默认 1 秒)刷盘
-
-
 
 更多详细请参考 [egg-logger](https://github.com/eggjs/egg-logger) 和 [egg-logrotator](https://github.com/eggjs/egg-logrotator)。

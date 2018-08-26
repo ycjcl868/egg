@@ -12,8 +12,8 @@ Egg 是一个底层框架，应用可以直接使用，但 Egg 本身的插件�
 // package.json
 {
   "dependencies": {
-    "egg": "^1.0.0",
-    "egg-mysql": "^1.0.0"
+    "egg": "^2.0.0",
+    "egg-mysql": "^3.0.0"
   }
 }
 
@@ -35,8 +35,8 @@ module.exports = {
   "name": "framework1",
   "version": "1.0.0",
   "dependencies": {
-    "egg-mysql": "^1.0.0",
-    "egg-view-nunjucks": "^1.0.0"
+    "egg-mysql": "^3.0.0",
+    "egg-view-nunjucks": "^2.0.0"
   }
 }
 
@@ -121,16 +121,22 @@ loadUnit
 
 文件 | 应用 | 框架 | 插件
 --- | --- | --- | ---
-app/router.js | ✔︎ | |
-app/controller | ✔︎ | |
-app/middleware | ✔︎ | ✔︎ | ✔︎
-app/service | ✔︎ | ✔︎ | ✔︎
-app/extend | ✔︎ | ✔︎ | ✔︎
-app.js | ✔︎ | ✔︎ | ✔︎
-agent.js | ✔︎ | ✔︎ | ✔︎
-config/config.{env}.js | ✔︎ | ✔︎ | ✔︎
-config/plugin.js | ✔︎ | ✔︎ |
-package.json | ✔︎ | ✔︎ | ✔︎
+package.json| ✔︎ | ✔︎ | ✔︎ |
+config/plugin.{env}.js| ✔︎ | ✔︎ | |
+config/config.{env}.js| ✔︎ | ✔︎ | ✔︎ |
+app/extend/application.js| ✔︎ | ✔︎ | ✔︎ |
+app/extend/request.js| ✔︎ | ✔︎ | ✔︎ |
+app/extend/response.js| ✔︎ | ✔︎ | ✔︎ |
+app/extend/context.js| ✔︎ | ✔︎ | ✔︎ |
+app/extend/helper.js| ✔︎ | ✔︎ | ✔︎ |
+agent.js| ✔︎ | ✔︎ | ✔︎ |
+app.js| ✔︎ | ✔︎ | ✔︎ |
+app/service| ✔︎ | ✔︎ | ✔︎ |
+app/middleware| ✔︎ | ✔︎ | ✔︎ |
+app/controller| ✔︎ | | |
+app/router.js| ✔︎ | | |
+
+文件按表格内的顺序自上而下加载
 
 在加载过程中，Egg 会遍历所有的 loadUnit 加载上述的文件（应用、框架、插件各有不同），加载时有一定的优先级
 
@@ -160,7 +166,7 @@ app
 => app
 ```
 
-plugin1 为 framework1 依赖的插件，配置合并后 object key 的顺序会优先级于 plugin2/plugin3。因为 plugin2 和 plugin3 的依赖关系，所以交换了位置。framework1 继承了 egg，顺序会晚于 egg。应用最后加载。
+plugin1 为 framework1 依赖的插件，配置合并后 object key 的顺序会优先于 plugin2/plugin3。因为 plugin2 和 plugin3 的依赖关系，所以交换了位置。framework1 继承了 egg，顺序会晚于 egg。应用最后加载。
 
 请查看 [Loader.getLoadUnits](https://github.com/eggjs/egg-core/blob/65ea778a4f2156a9cebd3951dac12c4f9455e636/lib/loader/egg_loader.js#L233) 方法
 
@@ -169,18 +175,143 @@ plugin1 为 framework1 依赖的插件，配置合并后 object key 的顺序会
 上面已经列出了默认会加载的文件，Egg 会按如下文件顺序加载，每个文件或目录再根据 loadUnit 的顺序去加载（应用、框架、插件各有不同）。
 
 - 加载 [plugin](./plugin.md)，找到应用和框架，加载 `config/plugin.js`
-- 加载 [config](../basics/config.md), 遍历 loadUnit 加载 `config/config.{env}.js`
-- 加载 [extend](../basics/extend.md), 遍历 loadUnit 加载 `app/extend/xx.js`
+- 加载 [config](../basics/config.md)，遍历 loadUnit 加载 `config/config.{env}.js`
+- 加载 [extend](../basics/extend.md)，遍历 loadUnit 加载 `app/extend/xx.js`
 - [自定义初始化](../basics/app-start.md)，遍历 loadUnit 加载 `app.js` 和 `agent.js`
-- 加载 [service](../basics/service.md), 遍历 loadUnit 加载 `app/service` 目录
-- 加载 [middleware](../basics/middleware.md), 遍历 loadUnit 加载 `app/middleware` 目录
-- 加载 [controller](../basics/controller.md), 加载应用的 `app/controller` 目录
-- 加载 [router](../basics/router.md), 加载应用的 `app/router.js`
+- 加载 [service](../basics/service.md)，遍历 loadUnit 加载 `app/service` 目录
+- 加载 [middleware](../basics/middleware.md)，遍历 loadUnit 加载 `app/middleware` 目录
+- 加载 [controller](../basics/controller.md)，加载应用的 `app/controller` 目录
+- 加载 [router](../basics/router.md)，加载应用的 `app/router.js`
 
 注意
 
 - 加载时如果遇到同名的会覆盖，比如想要覆盖 `ctx.ip` 可以直接在应用的 `app/extend/context.js` 定义 ip 就可以了。
-- [应用完整启动顺序查看框架开发](./framework.md)
+- 应用完整启动顺序查看[框架开发](./framework.md)
+
+### 生命周期
+
+Egg提供了应用启动(`beforeStart`), 启动完成(`ready`), 关闭(`beforeClose`)这三个生命周期方法。
+```
+   init master process
+           ⬇
+init agent worker process
+           ⬇
+loader.load | beforeStart
+           ⬇
+ await agent worker ready
+           ⬇
+   call ready callback
+           ⬇
+init app worker processes
+           ⬇
+loader.load | beforeStart
+           ⬇
+ await app workers ready
+           ⬇
+   call ready callback
+           ⬇
+send egg-ready to master,
+    agent,app workers
+```
+## beforeStart
+`beforeStart` 方法在 loading 过程中调用, 所有的方法并行执行。 一般用来执行一些异步方法, 例如检查连接状态等, 比如 [`egg-mysql`](https://github.com/eggjs/egg-mysql/blob/master/lib/mysql.js) 就用 `beforeStart` 来检查与 mysql 的连接状态。所有的 `beforeStart` 任务结束后, 状态将会进入 `ready` 。不建议执行一些耗时较长的方法, 可能会导致应用启动超时。
+## ready
+`ready` 方法注册的任务在 load 结束并且所有的 `beforeStart` 方法执行结束后顺序执行, HTTP server 监听也是在这个时候开始, 此时代表所有的插件已经加载完毕并且准备工作已经完成, 一般用来执行一些启动的后置任务。
+## beforeClose
+`beforeClose` 注册方法在 app/agent 实例的 `close` 方法被调用后, 按注册的逆序执行。一般用于资源的释放操作, 例如 [`egg`](https://github.com/eggjs/egg/blob/master/lib/egg.js) 用来关闭 logger , 删除监听方法等。
+
+__这个方法不建议在生产环境使用, 可能遇到未执行完就结束进程的问题。__
+
+e.g.:
+```js
+// app.js
+console.time('app before start 200ms');
+console.time('app before start 100ms');
+
+app.beforeStart(async () => {
+  await sleep(200);
+  console.timeEnd('app before start 200ms');
+});
+
+app.beforeStart(async () => {
+  await sleep(100);
+  console.timeEnd('app before start 100ms');
+});
+
+app.on('server', () => {
+  console.log('server is ready');
+});
+
+app.ready(() => {
+  console.log('app ready');
+  cp.execSync(`kill ${process.ppid}`);
+  console.time('app before close 100ms');
+  console.time('app before close 200ms');
+});
+
+app.beforeClose(async () => {
+  await sleep(200);
+  console.timeEnd('app before close 200ms');
+});
+
+app.beforeClose(async () => {
+  await sleep(100);
+  console.timeEnd('app before close 100ms');
+});
+
+// agent.js
+console.time('agent before start 200ms');
+console.time('agent before start 100ms');
+
+agent.beforeStart(async () => {
+  await sleep(200);
+  console.timeEnd('agent before start 200ms');
+});
+
+agent.beforeStart(async () => {
+  await sleep(100);
+  console.timeEnd('agent before start 100ms');
+});
+
+agent.ready(() => {
+  console.log('agent ready');
+  console.time('agent before close 200ms');
+  console.time('agent before close 100ms');
+});
+
+agent.beforeClose(async () => {
+  await sleep(200);
+  console.timeEnd('agent before close 200ms');
+});
+
+agent.beforeClose(async () => {
+  await sleep(100);
+  console.timeEnd('agent before close 100ms');
+});
+```
+
+print:
+```
+agent before start 100ms: 131.096ms
+agent before start 200ms: 224.396ms // 并行执行
+
+agent ready
+
+app before start 100ms: 147.546ms
+app before start 200ms: 245.405ms // 并行执行
+
+app ready
+
+// 开流量
+server is ready
+
+agent before close 100ms: 866.218ms
+app before close 100ms: 108.007ms // LIFO, 后注册先执行
+app before close 200ms: 310.549ms // 串行执行
+agent before close 200ms: 1070.865ms
+```
+
+可以使用 [`egg-development`](https://github.com/eggjs/egg-development#loader-trace) 来查看加载过程。
 
 ### 文件加载规则
 
@@ -216,10 +347,12 @@ Egg 基于 Loader 实现了 [AppWorkerLoader] 和 [AgentWorkerLoader]，上层�
 
 ```js
 // 自定义 AppWorkerLoader
-// lib/loader.js
-const AppWorkerLoader = require('egg').AppWorkerLoader;
+// lib/framework.js
+const path = require('path');
+const egg = require('egg');
+const EGG_PATH = Symbol.for('egg#eggPath');
 
-class CustomAppWorkerLoader extends AppWorkerLoader {
+class YadanAppWorkerLoader extends egg.AppWorkerLoader {
   constructor(opt) {
     super(opt);
     // 自定义初始化
@@ -237,13 +370,21 @@ class CustomAppWorkerLoader extends AppWorkerLoader {
   }
 }
 
-exports.AppWorkerLoader = CustomAppWorkerLoader;
+class Application extends egg.Application {
+  get [EGG_PATH]() {
+    return path.dirname(__dirname);
+  }
+  // 覆盖 Egg 的 Loader，启动时使用这个 Loader
+  get [EGG_LOADER]() {
+    return YadanAppWorkerLoader;
+  }
+}
 
-// index.js
-// 拷贝一份 Egg 的 API
-Object.assign(exports, require('egg'));
-// 将自定义的 Loader exports 出来
-exports.AppWorkerLoader = require('./lib/loader').AppWorkerLoader;
+module.exports = Object.assign(egg, {
+  Application,
+  // 自定义的 Loader 也需要 export，上层框架需要基于这个扩展
+  AppWorkerLoader: YadanAppWorkerLoader,
+});
 ```
 
 通过 Loader 提供的这些 API，可以很方便的定制团队的自定义加载，如 `this.model.xx`， `app/extend/filter.js` 等等。
@@ -302,14 +443,15 @@ module.exports = app => {
 ```js
 // 以下为示例，请使用 loadService
 // app/service/user.js
-module.exports = app => {
-  return class UserService extends app.Service {};
-};
+const Service = require('egg').Service;
+class UserService extends Service {
 
+}
+module.exports = UserService;
+
+// app.js
 // 获取所有的 loadUnit
-const servicePaths = app.loader.getLoadUnits().map(unit => {
-  return path.join(unit.path, 'app/service');
-});
+const servicePaths = app.loader.getLoadUnits().map(unit => path.join(unit.path, 'app/service'));
 
 app.loader.loadToContext(servicePaths, 'service', {
   // service 需要继承 app.Service，所以要拿到 app 参数

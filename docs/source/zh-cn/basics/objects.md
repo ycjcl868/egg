@@ -1,11 +1,40 @@
 title: 框架内置基础对象
 ---
 
-在往下阅读之前，我们先初步介绍一下框架中内置的一些基础对象，包括从 [Koa] 继承而来的 4 个对象（Application, Context, Request, Response) 以及框架扩展的一些对象（Controller, Service, Helper, Config, Logger），在后续的文档阅读中我们会经常遇到它们。
+在本章，我们会初步介绍一下框架中内置的一些基础对象，包括从 [Koa] 继承而来的 4 个对象（Application, Context, Request, Response) 以及框架扩展的一些对象（Controller, Service, Helper, Config, Logger），在后续的文档阅读中我们会经常遇到它们。
 
 ## Application
 
 Application 是全局应用对象，在一个应用中，只会实例化一个，它继承自 [Koa.Application]，在它上面我们可以挂载一些全局的方法和对象。我们可以轻松的在插件或者应用中[扩展 Application 对象](./extend.md#Application)。
+
+### 事件
+
+在框架运行时，会在 Application 实例上触发一些事件，应用开发者或者插件开发者可以监听这些事件做一些操作。作为应用开发者，我们一般会在[启动自定义脚本](./app-start.md)中进行监听。
+
+- `server`: 该事件一个 worker 进程只会触发一次，在 HTTP 服务完成启动后，会将 HTTP server 通过这个事件暴露出来给开发者。
+- `error`: 运行时有任何的异常被 onerror 插件捕获后，都会触发 `error` 事件，将错误对象和关联的上下文（如果有）暴露给开发者，可以进行自定义的日志记录上报等处理。
+- `request` 和 `response`: 应用收到请求和响应请求时，分别会触发 `request` 和 `response` 事件，并将当前请求上下文暴露出来，开发者可以监听这两个事件来进行日志记录。
+
+```js
+// app.js
+
+module.exports = app => {
+  app.once('server', server => {
+    // websocket
+  });
+  app.on('error', (err, ctx) => {
+    // report error
+  });
+  app.on('request', ctx => {
+    // log receive request
+  });
+  app.on('response', ctx => {
+    // ctx.starttime is set by framework
+    const used = Date.now() - ctx.starttime;
+    // log total cost
+  });
+};
+```
 
 ### 获取方式
 
@@ -26,38 +55,32 @@ Application 对象几乎可以在编写应用时的任何一个地方获取到�
 
   ```js
   // app/controller/user.js
-  module.exports = app => {
-    return class UserController extends app.Controller {
-      * fetch() {
-        this.ctx.body = app.cache.get(this.ctx.query.id);
-      }
-    };
-  };
+  class UserController extends Controller {
+    async fetch() {
+      this.ctx.body = app.cache.get(this.ctx.query.id);
+    }
+  }
   ```
 
 和 [Koa] 一样，在 Context 对象上，可以通过 `ctx.app` 访问到 Application 对象。以上面的 Controller 文件举例：
 
 ```js
 // app/controller/user.js
-module.exports = app => {
-  return class UserController extends app.Controller {
-    * fetch() {
-      this.ctx.body = this.ctx.app.cache.get(this.ctx.query.id);
-    }
-  };
-};
+class UserController extends Controller {
+  async fetch() {
+    this.ctx.body = this.ctx.app.cache.get(this.ctx.query.id);
+  }
+}
 ```
 
 在继承于 Controller, Service 基类的实例中，可以通过 `this.app` 访问到 Application 对象。
 
 ```js
 // app/controller/user.js
-module.exports = app => {
-  return class UserController extends app.Controller {
-    * fetch() {
-      this.ctx.body = this.app.cache.get(this.ctx.query.id);
-    }
-  };
+class UserController extends Controller {
+  async fetch() {
+    this.ctx.body = this.app.cache.get(this.ctx.query.id);
+  }
 };
 ```
 
@@ -91,10 +114,10 @@ async function middleware(ctx, next) {
 ```js
 // app.js
 module.exports = app => {
-  app.beforeStart(function* () {
+  app.beforeStart(async () => {
     const ctx = app.createAnonymousContext();
     // preload before app start
-    yield ctx.service.posts.load();
+    await ctx.service.posts.load();
   });
 }
 ```
@@ -103,8 +126,8 @@ module.exports = app => {
 
 ```js
 // app/schedule/refresh.js
-exports.task = function* (ctx) {
-  yield ctx.service.posts.refresh();
+exports.task = async ctx => {
+  await ctx.service.posts.refresh();
 };
 ```
 
@@ -120,15 +143,13 @@ Response 是一个**请求级别的对象**，继承自 [Koa.Response]。封装�
 
 ```js
 // app/controller/user.js
-module.exports = app => {
-  return class UserController extends app.Controller {
-    * fetch() {
-      const { app, ctx } = this;
-      const id = ctx.request.query.id;
-      ctx.response.body = app.cache.get(id);
-    }
-  };
-};
+class UserController extends Controller {
+  async fetch() {
+    const { app, ctx } = this;
+    const id = ctx.request.query.id;
+    ctx.response.body = app.cache.get(id);
+  }
+}
 ```
 
 - [Koa] 会在 Context 上代理一部分 Request 和 Response 上的方法和属性，参见 [Koa.Context]。
@@ -150,17 +171,18 @@ module.exports = app => {
 ```js
 // app/controller/user.js
 
-// 从 app 实例上获取（推荐）
+// 从 egg 上获取（推荐）
+const Controller = require('egg').Controller;
+class UserController extends Controller {
+  // implement
+}
+module.exports = UserController;
+
+// 从 app 实例上获取
 module.exports = app => {
   return class UserController extends app.Controller {
     // implement
   };
-};
-
-// 从 egg 上获取
-const egg = require('egg');
-module.exports = class UserController extends egg.Controller {
-  // implement
 };
 ```
 
@@ -173,17 +195,18 @@ Service 基类的属性和 [Controller](#controller) 基类属性一致，访问
 ```js
 // app/service/user.js
 
-// 从 app 实例上获取（推荐）
+// 从 egg 上获取（推荐）
+const Service = require('egg').Service;
+class UserService extends Service {
+  // implement
+}
+module.exports = UserService;
+
+// 从 app 实例上获取
 module.exports = app => {
   return class UserService extends app.Service {
     // implement
   };
-};
-
-// 从 egg 上获取
-const egg = require('egg');
-module.exports = class UserService extends egg.Service {
-  // implement
 };
 ```
 
@@ -199,16 +222,14 @@ Helper 自身是一个类，有和 [Controller](#controller) 基类一样的属�
 
 ```js
 // app/controller/user.js
-module.exports = app => {
-  return class UserController extends app.Controller {
-    * fetch() {
-      const { app, ctx } = this;
-      const id = ctx.query.id;
-      const user = app.cache.get(id);
-      ctx.body = ctx.helper.formatUser(user);
-    }
-  };
-};
+class UserController extends Controller {
+  async fetch() {
+    const { app, ctx } = this;
+    const id = ctx.query.id;
+    const user = app.cache.get(id);
+    ctx.body = ctx.helper.formatUser(user);
+  }
+}
 ```
 
 除此之外，Helper 的实例还可以在模板中获取到，例如可以在模板中获取到 [security](../core/security.md) 插件提供的 `shtml` 方法。
@@ -269,6 +290,24 @@ module.exports = {
 ### Controller Logger & Service Logger
 
 我们可以在 Controller 和 Service 实例上通过 `this.logger` 获取到它们，它们本质上就是一个 Context Logger，不过在打印日志的时候还会额外的加上文件路径，方便定位日志的打印位置。
+
+## Subscription
+
+订阅模型是一种比较常见的开发模式，譬如消息中间件的消费者或调度任务。因此我们提供了 Subscription 基类来规范化这个模式。
+
+可以通过以下方式来引用 Subscription 基类：
+
+```js
+const Subscription = require('egg').Subscription;
+
+class Schedule extends Subscription {
+  // 需要实现此方法
+  // subscribe 可以为 async function 或 generator function
+  async subscribe() {}
+}
+```
+
+插件开发者可以根据自己的需求基于它定制订阅规范，如[定时任务](./schedule.md)就是使用这种规范实现的。
 
 [Koa]: http://koajs.com
 [Koa.Application]: http://koajs.com/#application

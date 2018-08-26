@@ -3,7 +3,22 @@ title: Tutorials
 - [Quick Start](../intro/quickstart.md)
 - [Progressive Development](./progressive.md)
 - [RESTful API](./restful.md)
-- [Async Function](./async-function.md)
+
+## Boilerplate Type Description
+
+You can use boilerplate type like this:
+
+```bash
+$ egg-init --type=simple
+```
+### Options
+
+boilerplate type | Description
+:----: | ----:
+simple | Simple egg app boilerplate 
+empty  | Empty egg app boilerplate 
+plugin | egg plugin boilerplate
+framework | egg framework boilerplate
 
 ## Template Engines
 

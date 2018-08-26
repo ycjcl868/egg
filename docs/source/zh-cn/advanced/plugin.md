@@ -4,30 +4,33 @@ title: 插件开发
 
 插件机制是我们框架的一大特色。它不但可以保证框架核心的足够精简、稳定、高效，还可以促进业务逻辑的复用，生态圈的形成。有人可能会问了
 
-> Koa 已经有了中间件的机制，为啥还要插件呢？
-> 中间件、插件、应用它们之间是什么关系，有什么区别？
-> 我该怎么使用一个插件？
-> 如何编写一个插件？
-> ...
+- Koa 已经有了中间件的机制，为啥还要插件呢？
+- 中间件、插件、应用它们之间是什么关系，有什么区别？
+- 我该怎么使用一个插件？
+- 如何编写一个插件？
+- ...
 
-接下来我们就来逐一讨论
+在[使用插件](../basics/plugin.md)章节我们已经讨论过前几点，接下来我们来看看如何开发一个插件。
 
-## 为什么要插件
+## 插件开发
 
-我们在使用 Koa 中间件过程中发现了下面一些问题：
+### 使用脚手架快速开发
 
-1. 中间件加载其实是有先后顺序的，但是中间件自身却无法管理这种顺序，只能交给使用者。这样其实非常不友好，一旦顺序不对，结果可能有天壤之别。
-2. 中间件的定位是拦截用户请求，并在它前后做一些事情，例如：鉴权、安全检查、访问日志等等。但实际情况是，有些功能是和请求无关的，例如：定时任务、消息订阅、后台逻辑等等。
-3. 有些功能包含非常复杂的初始化逻辑，需要在应用启动的时候完成。这显然也不适合放到中间件中去实现。
+你可以直接通过 [egg-init] 选择 [plugin][egg-boilerplate-plugin] 脚手架来快速上手。
 
-综上所述，我们需要一套更加强大的机制，来管理、编排那些相对独立的业务逻辑。
+```bash
+$ egg-init --type=plugin egg-hello
+$ cd egg-hello
+$ npm i
+$ npm test
+```
 
-## 什么是插件
+## 插件的目录结构
 
 一个插件其实就是一个『迷你的应用』，下面展示的是一个插件的目录结构，和应用（app）几乎一样。
 
 ```js
-. hello-plugin
+. egg-hello
 ├── package.json
 ├── app.js (可选)
 ├── agent.js (可选)
@@ -61,24 +64,29 @@ title: 插件开发
     - 一个应用可能依赖很多个插件，如果插件支持路由可能导致路由冲突。
     - 如果确实有统一路由的需求，可以考虑在插件里通过中间件来实现。
 
-2. 插件需要在 `package.json` 中的 `eggPlugin` 节点指定插件特有的信息
+2. 插件需要在 `package.json` 中的 `eggPlugin` 节点指定插件特有的信息：
 
     - `{String} name` - 插件名（必须配置），具有唯一性，配置依赖关系时会指定依赖插件的 name。
     - `{Array} dependencies` - 当前插件强依赖的插件列表（如果依赖的插件没找到，应用启动失败）。
     - `{Array} optionalDependencies` - 当前插件的可选依赖插件列表（如果依赖的插件未开启，只会 warning，不会影响应用启动）。
     - `{Array} env` - 只有在指定运行环境才能开启，具体有哪些环境可以参考[运行环境](../basics/env.md)。此配置是可选的，一般情况下都不需要配置。
 
-    ```json
-    {
-      "name": "egg-rpc",
-      "eggPlugin": {
-        "name": "rpc",
-        "dependencies": [ "registry" ],
-        "optionalDependencies": [ "vip" ],
-        "env": [ "local", "test", "unittest", "prod" ]
+      ```json
+      {
+        "name": "egg-rpc",
+        "eggPlugin": {
+          "name": "rpc",
+          "dependencies": [ "registry" ],
+          "optionalDependencies": [ "vip" ],
+          "env": [ "local", "test", "unittest", "prod" ]
+        }
       }
-    }
-    ```
+      ```
+
+  3. 插件没有 `plugin.js`：
+
+     - `eggPlugin.dependencies` 只是用于声明依赖关系，而不是引入插件或开启插件。
+     - 如果期望统一管理多个插件的开启和配置，可以在[上层框架](./framework.md)处理。
 
 ## 插件的依赖管理
 
@@ -140,119 +148,119 @@ title: 插件开发
 
 1. 首先在 `app/middleware` 目录下定义好中间件实现
 
-  ```js
-  'use strict';
+    ```js
+    'use strict';
 
-  const staticCache = require('koa-static-cache');
-  const assert = require('assert');
-  const mkdirp = require('mkdirp');
+    const staticCache = require('koa-static-cache');
+    const assert = require('assert');
+    const mkdirp = require('mkdirp');
 
-  module.exports = (options, app) => {
-    assert.strictEqual(typeof options.dir, 'string', 'Must set `app.config.static.dir` when static plugin enable');
+    module.exports = (options, app) => {
+      assert.strictEqual(typeof options.dir, 'string', 'Must set `app.config.static.dir` when static plugin enable');
 
-    // ensure directory exists
-    mkdirp.sync(options.dir);
+      // ensure directory exists
+      mkdirp.sync(options.dir);
 
-    app.loggers.coreLogger.info('[egg-static] starting static serve %s -> %s', options.prefix, options.dir);
+      app.loggers.coreLogger.info('[egg-static] starting static serve %s -> %s', options.prefix, options.dir);
 
-    return staticCache(options);
-  };
-  ```
+      return staticCache(options);
+    };
+    ```
 
 2. 在 `app.js` 中将中间件插入到合适的位置（例如：下面将 static 中间件放到 bodyParser 之前）
 
-  ```js
-  const assert = require('assert');
+    ```js
+    const assert = require('assert');
 
-  module.exports = app => {
-    // 将 static 中间件放到 bodyParser 之前
-    const index = app.config.coreMiddleware.indexOf('bodyParser');
-    assert(index >= 0, 'bodyParser 中间件必须存在');
+    module.exports = app => {
+      // 将 static 中间件放到 bodyParser 之前
+      const index = app.config.coreMiddleware.indexOf('bodyParser');
+      assert(index >= 0, 'bodyParser 中间件必须存在');
 
-    app.config.coreMiddleware.splice(index, 0, 'static');
-  };
-  ```
+      app.config.coreMiddleware.splice(index, 0, 'static');
+    };
+    ```
 
 ### 在应用启动时做一些初始化工作
 
 - 我在启动前想读取一些本地配置
 
-  ```js
-  // ${plugin_root}/app.js
-  const fs = require('fs');
-  const path = require('path');
+    ```js
+    // ${plugin_root}/app.js
+    const fs = require('fs');
+    const path = require('path');
 
-  module.exports = app => {
-    app.customData = fs.readFileSync(path.join(app.config.baseDir, 'data.bin'));
+    module.exports = app => {
+      app.customData = fs.readFileSync(path.join(app.config.baseDir, 'data.bin'));
 
-    app.coreLogger.info('read data ok');
-  };
-  ```
+      app.coreLogger.info('read data ok');
+    };
+    ```
 
 - 如果有异步启动逻辑，可以使用 `app.beforeStart` API
 
-  ```js
-  // ${plugin_root}/app.js
-  const MyClient = require('my-client');
+    ```js
+    // ${plugin_root}/app.js
+    const MyClient = require('my-client');
 
-  module.exports = app => {
-    app.myClient = new MyClient();
-    app.myClient.on('error', err => {
-      app.coreLogger.error(err);
-    });
-    app.beforeStart(function* () {
-      yield app.myClient.ready();
-      app.coreLogger.info('my client is ready');
-    });
-  };
-  ```
+    module.exports = app => {
+      app.myClient = new MyClient();
+      app.myClient.on('error', err => {
+        app.coreLogger.error(err);
+      });
+      app.beforeStart(async () => {
+        await app.myClient.ready();
+        app.coreLogger.info('my client is ready');
+      });
+    };
+    ```
 
 - 也可以添加 agent 启动逻辑，使用 `agent.beforeStart` API
 
-  ```js
-  // ${plugin_root}/agent.js
-  const MyClient = require('my-client');
+    ```js
+    // ${plugin_root}/agent.js
+    const MyClient = require('my-client');
 
-  module.exports = agent => {
-    agent.myClient = new MyClient();
-    agent.myClient.on('error', err => {
-      agent.coreLogger.error(err);
-    });
-    agent.beforeStart(function* () {
-      yield agent.myClient.ready();
-      agent.coreLogger.info('my client is ready');
-    });
-  };
-  ```
+    module.exports = agent => {
+      agent.myClient = new MyClient();
+      agent.myClient.on('error', err => {
+        agent.coreLogger.error(err);
+      });
+      agent.beforeStart(async () => {
+        await agent.myClient.ready();
+        agent.coreLogger.info('my client is ready');
+      });
+    };
+    ```
 
 ### 设置定时任务
 
 1. 在 `package.json` 里设置依赖 schedule 插件
 
-  ```json
-  {
-    "name": "your-plugin",
-    "eggPlugin": {
+    ```json
+    {
       "name": "your-plugin",
-      "dependencies": [ "schedule" ]
+      "eggPlugin": {
+        "name": "your-plugin",
+        "dependencies": [ "schedule" ]
+      }
     }
-  }
-  ```
+    ```
 
 2. 在 `${plugin_root}/app/schedule/` 目录下新建文件，编写你的定时任务
 
-  ```js
-  exports.schedule = {
-    type: 'worker',
-    cron: '0 0 3 * * *',
-    // interval: '1h',
-    // immediate: true,
-  };
+    ```js
+    exports.schedule = {
+      type: 'worker',
+      cron: '0 0 3 * * *',
+      // interval: '1h',
+      // immediate: true,
+    };
 
-  exports.task = function* (ctx) {
-    // your logic code
-  };
-  ```
+    exports.task = async ctx => {
+      // your logic code
+    };
+    ```
 
 ### 全局实例插件的最佳实践
 
@@ -261,7 +269,7 @@ title: 插件开发
 - 在一个应用中同时使用同一个服务的不同实例（连接到两个不同的 MySQL 数据库）。
 - 从其他服务获取配置后动态初始化连接（从配置中心获取到 MySQL 服务地址后再建立连接）。
 
-如果让插件各自实现，可能会出现各种奇怪的配置方式和初始化方式，所以框架提供了 `app.addSingleton(name, creator)` 方法来统一这一类服务的创建。
+如果让插件各自实现，可能会出现各种奇怪的配置方式和初始化方式，所以框架提供了 `app.addSingleton(name, creator)` 方法来统一这一类服务的创建。需要注意的是在使用 `app.addSingleton(name, creator)` 方法时，配置文件中一定要有 `client` 或者 `clients` 为 key 的配置作为传入 `creator` 函数 的 `config`。
 
 #### 插件写法
 
@@ -286,11 +294,28 @@ function createMysql(config, app) {
   const client = new Mysql(config);
 
   // 做启动应用前的检查
-  app.beforeStart(function* () {
-    const rows = yield client.query('select now() as currentTime;');
-    const index = count++;
-    app.coreLogger.info(`[egg-mysql] instance[${index}] status OK, rds currentTime: ${rows[0].currentTime}`);
+  app.beforeStart(async () => {
+    const rows = await client.query('select now() as currentTime;');
+    app.coreLogger.info(`[egg-mysql] init instance success, rds currentTime: ${rows[0].currentTime}`);
   });
+
+  return client;
+}
+```
+
+初始化方法也支持 `Async function`，便于有些特殊的插件需要异步化获取一些配置文件：
+
+```js
+async function createMysql(config, app) {
+  // 异步获取 mysql 配置
+  const mysqlConfig = await app.configManager.getMysqlConfig(config.mysql);
+  assert(mysqlConfig.host && mysqlConfig.port && mysqlConfig.user && mysqlConfig.database);
+  // 创建实例
+  const client = new Mysql(mysqlConfig);
+
+  // 做启动应用前的检查
+  const rows = await client.query('select now() as currentTime;');
+  app.coreLogger.info(`[egg-mysql] init instance success, rds currentTime: ${rows[0].currentTime}`);
 
   return client;
 }
@@ -304,74 +329,70 @@ function createMysql(config, app) {
 
 1. 在配置文件中声明 MySQL 的配置。
 
-```js
-// config/config.default.js
-module.exports = {
-  mysql: {
-    client: {
-      host: 'mysql.com',
-      port: '3306',
-      user: 'test_user',
-      password: 'test_password',
-      database: 'test',
-    },
-  },
-};
-```
+    ```js
+    // config/config.default.js
+    module.exports = {
+      mysql: {
+        client: {
+          host: 'mysql.com',
+          port: '3306',
+          user: 'test_user',
+          password: 'test_password',
+          database: 'test',
+        },
+      },
+    };
+    ```
 
 2. 直接通过 `app.mysql` 访问数据库。
 
-```js
-// app/controller/post.js
-module.exports = app => {
-  return class PostController extends app.Controller {
-    * list() {
-      const posts = yield this.app.mysql.query(sql, values);
-    },
-  };
-};
-```
+    ```js
+    // app/controller/post.js
+    class PostController extends Controller {
+      async list() {
+        const posts = await this.app.mysql.query(sql, values);
+      },
+    }
+    ```
 
 ##### 多实例
 
-1. 同样需要在配置文件中声明 MySQL 的配置，不过和单实例时不同，配置项中需要有一个 `clients` 字段，分别申明不同实例的配置，同时可以通过 `default` 字段来配置多个实例中共享的配置（如 host 和 port）。
+1. 同样需要在配置文件中声明 MySQL 的配置，不过和单实例时不同，配置项中需要有一个 `clients` 字段，分别申明不同实例的配置，同时可以通过 `default` 字段来配置多个实例中共享的配置（如 host 和 port）。需要注意的是在这种情况下要用 `get` 方法指定相应的实例。（例如：使用 `app.mysql.get('db1').query()`，而不是直接使用 `app.mysql.query()` 得到一个 `undefined`）。
 
-```js
-// config/config.default.js
-exports.mysql = {
-  clients: {
-    // clientId, access the client instance by app.mysql.get('clientId')
-    db1: {
-      user: 'user1',
-      password: 'upassword1',
-      database: 'db1',
-    },
-    db2: {
-      user: 'user2',
-      password: 'upassword2',
-      database: 'db2',
-    },
-  },
-  // default configuration for all databases
-  default: {
-    host: 'mysql.com',
-    port: '3306',
-  },
-};
-```
+    ```js
+    // config/config.default.js
+    exports.mysql = {
+      clients: {
+        // clientId, access the client instance by app.mysql.get('clientId')
+        db1: {
+          user: 'user1',
+          password: 'upassword1',
+          database: 'db1',
+        },
+        db2: {
+          user: 'user2',
+          password: 'upassword2',
+          database: 'db2',
+        },
+      },
+      // default configuration for all databases
+      default: {
+        host: 'mysql.com',
+        port: '3306',
+      },
+    };
+    ```
 
 2. 通过 `app.mysql.get('db1')` 来获取对应的实例并使用。
 
-```js
-// app/controller/post.js
-module.exports = app => {
-  return class PostController extends app.Controller {
-    * list() {
-      const posts = yield this.app.mysql.get('db1').query(sql, values);
-    },
-  };
-};
-```
+    ```js
+    // app/controller/post.js
+    class PostController extends Controller {
+      async list() {
+        const posts = await this.app.mysql.get('db1').query(sql, values);
+      },
+    }
+    ```
 
 ##### 动态创建实例
 
@@ -380,11 +401,11 @@ module.exports = app => {
 ```js
 // app.js
 module.exports = app => {
-  app.beforeStart(function* () {
+  app.beforeStart(async () => {
     // 从配置中心获取 MySQL 的配置 { host, post, password, ... }
-    const mysqlConfig = yield app.configCenter.fetch('mysql');
+    const mysqlConfig = await app.configCenter.fetch('mysql');
     // 动态创建 MySQL 实例
-    app.database = app.mysql.createInstance(mysqlConfig);
+    app.database = await app.mysql.createInstanceAsync(mysqlConfig);
   });
 };
 ```
@@ -393,95 +414,14 @@ module.exports = app => {
 
 ```js
 // app/controller/post.js
-module.exports = app => {
-  return class PostController extends app.Controller {
-    * list() {
-      const posts = yield this.app.databse.query(sql, values);
-    },
-  };
-};
+class PostController extends Controller {
+  async list() {
+    const posts = await this.app.database.query(sql, values);
+  },
+}
 ```
 
 **注意，在动态创建实例的时候，框架也会读取配置中 `default` 字段内的配置项作为默认配置。**
-
-## 插件使用指南
-
-### 安装
-
-和安装普通 `npm` 包一样
-
-```bash
-$ npm i egg-onerror --save
-```
-
-### 开启和关闭
-
-在应用的 `${app_root}/config/plugin.js` 文件里配置
-
-```js
-module.exports = {
-  onerror: {
-    enable: true,
-    package: 'egg-onerror',
-  },
-};
-```
-
-每个配置项有一下配置参数：
-- `{Boolean} enable` - 是否开启此插件
-- `{String} package` - `npm` 模块名称，允许插件以 `npm` 模块形式引入
-- `{String} path` - 插件绝对路径，跟 package 配置互斥
-- `{Array} env` - 只有在指定运行环境才能开启，会覆盖插件自己的配置
-
-这里稍微讲下 package 和 path 的区别
-
-- package 是 `npm` 方式引入，也是最常见的引入方式
-- path 是绝对路径引入，一般是内置插件，比如：应用内部抽了一个插件，但还没来得及发布到 `npm`，或者是应用自己覆盖了框架的一些插件
-
-_说明：_ 框架内部内置了一些插件，而应用在使用这些插件的时候就不用配置 package 或者 path，只需要指定 enable 与否
-
-```js
-// 对于内置插件，可以用下面的简洁方式开启或关闭
-exports.onerror = false;
-```
-
-框架已内置插件列表：
-
-- [onerror](https://github.com/eggjs/egg-onerror) 统一异常处理
-- [Session](https://github.com/eggjs/egg-session) Session 实现
-- [i18n](https://github.com/eggjs/egg-i18n) 多语言
-- [watcher](https://github.com/eggjs/egg-watcher) 文件和文件夹监控
-- [multipart](https://github.com/eggjs/egg-multipart) 文件流式上传
-- [security](https://github.com/eggjs/egg-security) 安全
-- [development](https://github.com/eggjs/egg-development) 开发环境配置
-- [logrotator](https://github.com/eggjs/egg-logrotator) 日志切分
-- [schedule](https://github.com/eggjs/egg-schedule) 定时任务
-- [static](https://github.com/eggjs/egg-static) 静态服务器
-- [jsonp](https://github.com/eggjs/egg-jsonp) jsonp 支持
-- [view](https://github.com/eggjs/egg-view) 模板引擎
-
-### 根据环境配置
-
-插件还支持 `plugin.{env}.js` 这种模式，会根据[运行环境](../basics/env.md)加载插件配置。
-
-比如定义了一个开发环境使用的插件 `egg-dev`，只希望在本地环境加载，可以如下定义
-
-```js
-// package.json
-{
-  "devDependencies": {
-    "egg-dev": "*"
-  }
-}
-
-// config/plugin.local.js
-exports.dev = {
-  enable: true,
-  package: 'egg-dev',
-};
-```
-
-这样在生产环境可以不需要下载 `egg-dev` 的包了。
 
 ### 插件的寻址规则
 
@@ -493,19 +433,6 @@ exports.dev = {
   1. 应用根目录下的 `node_modules`
   2. 应用依赖框架路径下的 `node_modules`
   3. 当前路径下的 `node_modules` （主要是兼容单元测试场景）
-
-## 插件开发
-
-### 使用脚手架快速开发
-
-你可以直接通过 [egg-init] 选择 [plugin][egg-boilerplate-plugin] 脚手架来快速上手。
-
-```bash
-$ egg-init egg-xxx --type=plugin
-$ cd egg-xxx
-$ npm i
-$ npm test
-```
 
 ### 插件规范
 
@@ -519,27 +446,27 @@ $ npm test
   - 按照上面的文档添加 `eggPlugin` 节点
   - 在 `keywords` 里加上 `egg`、`egg-plugin`、`eggPlugin` 等关键字，便于索引
 
-  ```json
-  {
-    "name": "egg-view-nunjucks",
-    "version": "1.0.0",
-    "description": "view plugin for egg",
-    "eggPlugin": {
-      "name": "nunjucks",
-      "dep": [
-        "security"
-      ]
-    },
-    "keywords": [
-      "egg",
-      "egg-plugin",
-      "eggPlugin",
-      "egg-plugin-view",
-      "egg-view",
-      "nunjucks"
-    ],
-  }
-  ```
+    ```json
+    {
+      "name": "egg-view-nunjucks",
+      "version": "1.0.0",
+      "description": "view plugin for egg",
+      "eggPlugin": {
+        "name": "nunjucks",
+        "dep": [
+          "security"
+        ]
+      },
+      "keywords": [
+        "egg",
+        "egg-plugin",
+        "eggPlugin",
+        "egg-plugin-view",
+        "egg-view",
+        "nunjucks"
+      ],
+    }
+    ```
 
 ## 为何不使用 npm 包名来做插件名？
 
